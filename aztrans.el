@@ -33,11 +33,12 @@
 (defvar aztrans-url "https://api-free.aztrans.com"
   "URL to use.")
 
-(cl-defun aztrans (phrase &key (from "fr") (to "en"))
-  (let* ((url-request-method "POST")
+(cl-defun aztrans (string &key (from "fr") (to "en"))
+  (let* ((phrase (string-match-p " " string))
+	 (url-request-method "POST")
          (url-request-data
 	  (encode-coding-string (json-serialize
-				 `[(:text ,phrase)])
+				 `[(:text ,string)])
 				'utf-8))
          (url-request-extra-headers
           `(("Connection" . "close")
@@ -47,25 +48,30 @@
 	    ("Ocp-Apim-Subscription-Region" .,aztrans-region))))
     (with-current-buffer (url-retrieve-synchronously
 			  (format
-			   "https://api.cognitive.microsofttranslator.com/dictionary/lookup?api-version=3.0&from=%s&to=%s"
+			   "https://api.cognitive.microsofttranslator.com/%s?api-version=3.0&from=%s&to=%s"
+			   (if phrase "translate" "dictionary/lookup")
 			   from to)
 			  t)
       (goto-char (point-min))
       (unwind-protect
 	  (and (search-forward "\n\n" nil t)
-	       (aztrans--summarize (json-parse-buffer :object-type 'plist)))
+	       (aztrans--summarize (json-parse-buffer :object-type 'plist)
+				   string phrase))
 	(kill-buffer (current-buffer))))))
 
-(defun aztrans--summarize (json)
-  (let ((source (elt json 0)))
-    (list :source (plist-get source :normalizedSource)
-	  :translations
-	  (cl-loop for trans across (plist-get source :translations)
-		   collect (list :target (plist-get trans :normalizedTarget)
-				 :type (plist-get trans :posTag))))))
-
-
-				 
+(defun aztrans--summarize (json string &optional phrase)
+  (if phrase
+      (list :source string
+	    :translations (cl-loop for trans across (plist-get (elt json 0)
+							       :translations)
+				   collect (list :target (plist-get trans :text)
+						 :type "PHRASE")))
+    (let ((source (elt json 0)))
+      (list :source (plist-get source :normalizedSource)
+	    :translations
+	    (cl-loop for trans across (plist-get source :translations)
+		     collect (list :target (plist-get trans :normalizedTarget)
+				   :type (plist-get trans :posTag)))))))
 
 (provide 'aztrans)
 
