@@ -23,6 +23,7 @@
 ;;; Code:
 
 (require 'url)
+(require 'libinput)
 
 (defvar aztrans-api-key nil
   "The key to the Azure service.")
@@ -72,6 +73,66 @@
 	    (cl-loop for trans across (plist-get source :translations)
 		     collect (list :target (plist-get trans :normalizedTarget)
 				   :type (plist-get trans :posTag)))))))
+
+(defvar aztrans-keyboard-identifier "XING WEI"
+  "Regexp that matches the name of the keyboard we're listening to.")
+
+(defun aztrans--setup ()
+  "Setup the system to ignore an extra keyboard and then listen to events from it."
+  (let ((ids
+	 (cl-loop for line in (with-temp-buffer
+				(call-process "xinput" nil t nil "list")
+				(split-string (buffer-string) "\n"))
+		  when (string-match-p aztrans-keyboard-identifier line)
+		  collect (and (string-match "id=\\([0-9]+\\)" line)
+			       (match-string 1 line)))))
+    ;; Disabled the matching devices.
+    (dolist (id ids)
+      (call-process "xinput" nil nil nil "--set-prop" id "Device Enabled" "0"))
+    
+    (libinput-grab-devices
+     #'aztrans--handle-event aztrans-keyboard-identifier)))
+
+(defvar aztrans--window-configuration nil)
+(defvar aztrans--restore-timer nil)
+
+(defun aztrans--handle-event (event)
+  (message "%S" event)
+  (when-let* ((keyname (plist-get event :key))
+	      (key (and (string-match "\\`KEY_\\(.*\\)" keyname)
+			(match-string 1 keyname))))
+    (let ((window (get-buffer-window (get-buffer-create "*aztrans*"))))
+      (unless window
+	(setq aztrans--window-configuration (current-window-configuration))
+	(when aztrans--restore-timer
+	  (cancel-timer aztrans--restore-timer))
+	(delete-other-windows)
+	(switch-to-buffer "*aztrans*")
+	(erase-buffer))
+      (with-current-buffer "*aztrans*"
+	(goto-char (point-max))
+	(cond
+	 ((length= key 1)
+	  (insert key))
+	 ((equal key "SPACE")
+	  (insert " "))
+	 ((equal key "BACKSPACE")
+	  (delete-char -1))
+	 ((equal key "ENTER")
+	  (let ((phrase (buffer-string)))
+	    (erase-buffer)
+	    (insert "...")
+	    (let ((result (aztrans phrase)))
+	      (erase-buffer)
+	      (insert (plist-get result :source) "\n")
+	      (dolist (trans (plist-get result :translations))
+		(insert "\n" (plist-get trans :target)))
+	      (goto-char (point-min))
+	      (setq aztrans--restore-timer
+		    (run-at-time
+		     5 nil (lambda ()
+			     (set-window-configuration
+			      aztrans--window-configuration))))))))))))
 
 (provide 'aztrans)
 
