@@ -34,8 +34,11 @@
 (defvar aztrans-url "https://api-free.aztrans.com"
   "URL to use.")
 
+(defvar aztrans-keyboard-identifier "XING WEI"
+  "Regexp that matches the name of the keyboard we're listening to.")
+
 (defface aztrans-input
-  '((t :height 4.0
+  '((t :height 10.0
        :weight bold))
   "Face for aztrans text inputs."
   :version "31."
@@ -89,9 +92,6 @@
 		     collect (list :target (plist-get trans :normalizedTarget)
 				   :type (plist-get trans :posTag)))))))
 
-(defvar aztrans-keyboard-identifier "XING WEI"
-  "Regexp that matches the name of the keyboard we're listening to.")
-
 (defun aztrans--setup ()
   "Setup the system to ignore an extra keyboard and then listen to events from it."
   (let ((ids
@@ -130,13 +130,15 @@
 	(goto-char (point-max))
 	(cond
 	 ((length= key 1)
-	  (insert (propertize key 'face 'aztrans-input)))
+	  (insert (propertize (downcase key) 'face 'aztrans-input)))
 	 ((equal key "SPACE")
-	  (insert " "))
+	  (insert (propertize " " 'face 'aztrans-input)))
 	 ((equal key "BACKSPACE")
 	  (delete-char -1))
+	 ;; Abort.
 	 ((equal key "ESC")
 	  (set-window-configuration aztrans--window-configuration))
+	 ;; Do the translation.
 	 ((equal key "ENTER")
 	  (let ((phrase (buffer-string)))
 	    (erase-buffer)
@@ -150,6 +152,7 @@
 		(insert "\n" (propertize (plist-get trans :target)
 					 'face 'aztrans-response)))
 	      (goto-char (point-min))
+	      ;; Restore the old window layout after some seconds.
 	      (setq aztrans--restore-timer
 		    (run-at-time
 		     5 nil (lambda ()
