@@ -34,6 +34,21 @@
 (defvar aztrans-url "https://api-free.aztrans.com"
   "URL to use.")
 
+(defface aztrans-input
+  '((t :height 4.0
+       :weight bold))
+  "Face for aztrans text inputs."
+  :version "31."
+  :group 'utilities)
+
+(defface aztrans-response
+  '((t :inherit aztrans-input
+       :foreground "yellow"
+       :weight bold))
+  "Face for aztrans text inputs."
+  :version "31."
+  :group 'utilities)
+
 (cl-defun aztrans (string &key (from "fr") (to "en"))
   (let* ((phrase (string-match-p " " string))
 	 (url-request-method "POST")
@@ -97,7 +112,7 @@
 (defvar aztrans--restore-timer nil)
 
 (defun aztrans--handle-event (event)
-  (message "%S" event)
+  ;;(message "%S" event)
   (when-let* ((keyname (plist-get event :key))
 	      (key (and (string-match "\\`KEY_\\(.*\\)" keyname)
 			(match-string 1 keyname))))
@@ -110,23 +125,30 @@
 	(switch-to-buffer "*aztrans*")
 	(erase-buffer))
       (with-current-buffer "*aztrans*"
+	(when (bobp)
+	  (erase-buffer))
 	(goto-char (point-max))
 	(cond
 	 ((length= key 1)
-	  (insert key))
+	  (insert (propertize key 'face 'aztrans-input)))
 	 ((equal key "SPACE")
 	  (insert " "))
 	 ((equal key "BACKSPACE")
 	  (delete-char -1))
+	 ((equal key "ESC")
+	  (set-window-configuration aztrans--window-configuration))
 	 ((equal key "ENTER")
 	  (let ((phrase (buffer-string)))
 	    (erase-buffer)
 	    (insert "...")
 	    (let ((result (aztrans phrase)))
 	      (erase-buffer)
-	      (insert (plist-get result :source) "\n")
+	      (insert (propertize (plist-get result :source)
+				  'face 'aztrans-input)
+		      "\n")
 	      (dolist (trans (plist-get result :translations))
-		(insert "\n" (plist-get trans :target)))
+		(insert "\n" (propertize (plist-get trans :target)
+					 'face 'aztrans-response)))
 	      (goto-char (point-min))
 	      (setq aztrans--restore-timer
 		    (run-at-time
